@@ -1,0 +1,53 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=4
+
+_global_script_classes=[ {
+"base": "Mob",
+"class": "Client",
+"language": "GDScript",
+"path": "res://src/Client.gd"
+}, {
+"base": "Node2D",
+"class": "Mob",
+"language": "GDScript",
+"path": "res://src/Mob.gd"
+} ]
+_global_script_class_icons={
+"Client": "",
+"Mob": ""
+}
+
+[application]
+
+config/name="Roleplay Rebirth"
+run/main_scene="res://scenes/MainMenu.scn"
+config/icon="res://icon.png"
+
+[display]
+
+window/size/width=1280
+window/size/height=720
+window/stretch/mode="2d"
+window/stretch/aspect="keep_width"
+
+[gui]
+
+common/drop_mouse_on_gui_input_disabled=true
+
+[physics]
+
+common/enable_pause_aware_picking=true
+
+[rendering]
+
+quality/driver/driver_name="GLES2"
+vram_compression/import_etc=true
+vram_compression/import_etc2=false
+environment/default_environment="res://default_env.tres"
