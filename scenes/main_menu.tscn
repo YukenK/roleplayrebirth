@@ -1,0 +1,49 @@
+[gd_scene load_steps=2 format=3 uid="uid://ylpug2f6d5fl"]
+
+[ext_resource type="Script" path="res://src/main.gd" id="1_y7t5l"]
+
+[node name="MainMenu" type="Control"]
+layout_mode = 3
+anchors_preset = 0
+script = ExtResource("1_y7t5l")
+
+[node name="Panel" type="Panel" parent="."]
+custom_minimum_size = Vector2(1280, 720)
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="Quit" type="Button" parent="Panel"]
+custom_minimum_size = Vector2(128, 32)
+layout_mode = 0
+offset_left = 576.0
+offset_top = 348.0
+offset_right = 704.0
+offset_bottom = 372.0
+text = "Quit"
+
+[node name="Connect" type="Button" parent="Panel"]
+custom_minimum_size = Vector2(128, 24)
+layout_mode = 1
+offset_left = 576.0
+offset_top = 276.0
+offset_right = 704.0
+offset_bottom = 308.0
+text = "Connect"
+
+[node name="Options" type="Button" parent="Panel"]
+custom_minimum_size = Vector2(128, 32)
+layout_mode = 1
+offset_left = 576.0
+offset_top = 312.0
+offset_right = 704.0
+offset_bottom = 336.0
+text = "Options"
+
+[node name="AddressLine" type="LineEdit" parent="Panel"]
+custom_minimum_size = Vector2(128, 0)
+layout_mode = 0
+offset_left = 576.0
+offset_top = 240.0
+offset_right = 704.0
+offset_bottom = 272.0
