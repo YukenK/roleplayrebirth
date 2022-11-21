@@ -14,20 +14,20 @@ var name_line: LineEdit
 
 #Enums
 enum {
-	CHAT_MESSAGE
+	CHAT_MESSAGE,
+	PLAYER_CONNECT,
+	PLAYER_DISCONNECT
 }
 
 # Misc
 var clients: Dictionary = {}
-var ids: Dictionary = {}
-var is_connected = false
+var client_connected = false
 
 func _ready():
 	if "--server" in OS.get_cmdline_args():
 		print("Running as server.")
 		is_server = true
 		server = ENetConnection.new()
-		server.peer_disconnected.connect(self._peer_disconnect)
 		return server.create_host_bound("0.0.0.0", 5515)
 	set_process(false)
 	client = ENetConnection.new()
@@ -43,34 +43,83 @@ func _on_connect_press():
 	client.connect_to_host("127.0.0.1", 5515)
 func _on_quit_press():
 	get_tree().quit()
+func handle_connect_server(id):
+	pass
+func handle_disconnect_server(id):
+	clients.erase(id)
 func handle_packet_server(event: Array):
 	# We could combine these two functions into one, but that'll lead to a lot of ugly "if is_server" everywhere.
 	# This is easier to read.
 	var packet_peer: ENetPacketPeer = event[1]
+	var id: String = str(packet_peer.get_instance_id())
+	var id_buf = id.to_utf8_buffer()
 	match event[0]:
 		server.EVENT_CONNECT:
-			packet_peer.get_remote_address()
+			# Ultimately, whenever a player is connected, we will send a data array of [TYPE, SIZE, ID, SIZE, CLIENT_NAME, SIZE, CHARACTER_NAME]
+			# Character name is optional; if size is 0, we won't send it.
+			# Client names are not optional. For now, clients will choose a name before joining the server; eventually, proper auth.
+			clients[id] = Client.new()
+			var _client = clients[id]
+			handle_connect_server(id)
+			var bytes: PackedByteArray = PackedByteArray()
+			bytes.append(PLAYER_CONNECT & 0xFF)
+			bytes.append(id_buf.size() & 0xFF)
+			bytes.append_array(id_buf)
+			var client_name = _client.name.to_utf8_buffer()
+			bytes.append(client_name.size() & 0xFF)
+			bytes.append_array(client_name)
+			if _client.character != null:
+				var char_name = _client.character.to_utf8_buffer()
+				bytes.append(char_name.size())
+				bytes.append_array(char_name)
+			else:
+				bytes.append(0)
+			
+			server.broadcast(1, bytes, server.FLAG_RELIABLE)
 		server.EVENT_DISCONNECT:
-			pass
+			handle_disconnect_server(id)
+			var bytes: PackedByteArray = PackedByteArray()
+			bytes.append(PLAYER_DISCONNECT & 0xFF)
+			bytes.append(id_buf.size() & 0xFF)
+			bytes.append_array(id_buf)
+
+			server.broadcast(1, bytes, server.FLAG_RELIABLE)
 		server.EVENT_RECEIVE:
 			pass
 		_: pass
-func handle_packet_client():
+func handle_connect_client(event: Array):
 	pass
+func handle_disconnect_client(event: Array):
+	pass
+func handle_packet_client(event: Array):
+	match event[0]:
+		client.EVENT_CONNECT:
+			client_connected = true
+			set_process(true)
+		client.EVENT_DISCONNECT:
+			client_connected = false
+			set_process(false)
+		client.EVENT_RECEIVE:
+			var data = event[2]
+			match data[0]:
+				PLAYER_CONNECT:
+					handle_connect_client(event)
+				PLAYER_DISCONNECT:
+					handle_disconnect_client(event)
+		_: pass
 var event: Array = []
 func _process(delta):
 	var packet_peer: ENetPacketPeer
-	if is_server:
+	if is_server and clients.size() > 0:
 		event = server.service()
 		while event:
 			packet_peer = event[1]
 			handle_packet_server(event)
 			event = server.service()
-	if is_connected:
+	if client_connected:
 		event = client.service()
 		while event:
+			packet_peer = event[1]
+			handle_packet_client(event)
 			event = client.service()
-		packet_peer = event[1]
-		while event:
-			handle_packet_client()
-	event = null
+	event = []
