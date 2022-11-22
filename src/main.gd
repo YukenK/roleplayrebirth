@@ -16,7 +16,8 @@ var name_line: LineEdit
 enum {
 	CHAT_MESSAGE,
 	PLAYER_CONNECT,
-	PLAYER_DISCONNECT
+	PLAYER_DISCONNECT,
+	PLAYER_INPUT
 }
 
 # Misc
@@ -31,6 +32,7 @@ func _ready():
 		return server.create_host_bound("0.0.0.0", 5515)
 	set_process(false)
 	client = ENetConnection.new()
+	client.create_host()
 	quit_button = get_node("Panel/Quit")
 	quit_button.pressed.connect(self._on_quit_press)
 	connect_button = get_node("Panel/Connect")
@@ -74,7 +76,6 @@ func handle_packet_server(event: Array):
 				bytes.append_array(char_name)
 			else:
 				bytes.append(0)
-			
 			server.broadcast(1, bytes, server.FLAG_RELIABLE)
 		server.EVENT_DISCONNECT:
 			handle_disconnect_server(id)
@@ -82,11 +83,45 @@ func handle_packet_server(event: Array):
 			bytes.append(PLAYER_DISCONNECT & 0xFF)
 			bytes.append(id_buf.size() & 0xFF)
 			bytes.append_array(id_buf)
-
 			server.broadcast(1, bytes, server.FLAG_RELIABLE)
 		server.EVENT_RECEIVE:
-			pass
+			var data = event[2]
+			match data[0]: 
+				# A chat message is formatted: [CHAT_MESSAGE, UTF_8 buffer] when sent to the server.
+				# The server will then broadcoast [CHAT_MESSAGE, CLIENT_NAME_SIZE, CLIENT_NAME, CHARACTER_NAME_SIZE (optional, set to 0 if no character), CHARACTER_NAME, UTF_8 BUFFER]
+				CHAT_MESSAGE: handle_chat_server(event)
+				_: pass
 		_: pass
+func handle_chat_server(event: Array):
+	var packet_peer: ENetPacketPeer = event[1]
+	var data = event[2]
+	var bytes: PackedByteArray = PackedByteArray()
+	var _client: Client = clients[packet_peer.get_instance_id()]
+	var client_name_size = _client.name.to_utf8_buffer().size()
+	var char_name_size = 0
+	if _client.character != null:
+		char_name_size = _client.character.to_utf8_buffer().size()
+	bytes.append(CHAT_MESSAGE)
+	bytes.append(client_name_size & 0xFF)
+	bytes.append_array(_client.name.to_utf8_buffer())
+	bytes.append(char_name_size & 0xFF)
+	if char_name_size > 0:
+		bytes.append_array(_client.character.to_utf8_buffer())
+	bytes.append_array(data[1])
+	server.broadcast(1, bytes, server.FLAG_RELIABLE)
+func handle_chat_client(event: Array):
+	var data: PackedByteArray = event[2]
+	var client_name_size = data[1]
+	var client_name = data.slice(2, client_name_size).get_string_from_utf8()
+	var char_name_size = data[3 + client_name_size]
+	var character_name = null
+	var message = null
+	if char_name_size > 0:
+		character_name = data.slice(4 + client_name_size, char_name_size).get_string_from_utf8()
+		message = data.slice(5 + client_name_size + char_name_size, data.size())
+	else:
+		message = data.slice(4 + client_name_size, data.size())
+	print(client_name, character_name if character_name.to_utf8_buffer().size > 0 else null, message)
 func handle_connect_client(event: Array):
 	pass
 func handle_disconnect_client(event: Array):
@@ -102,6 +137,8 @@ func handle_packet_client(event: Array):
 		client.EVENT_RECEIVE:
 			var data = event[2]
 			match data[0]:
+				CHAT_MESSAGE:
+					handle_chat_client(event)
 				PLAYER_CONNECT:
 					handle_connect_client(event)
 				PLAYER_DISCONNECT:
