@@ -32,7 +32,6 @@ func _ready():
 		return server.create_host_bound("0.0.0.0", 5515)
 	set_process(false)
 	client = ENetConnection.new()
-	client.create_host()
 	quit_button = get_node("Panel/Quit")
 	quit_button.pressed.connect(self._on_quit_press)
 	connect_button = get_node("Panel/Connect")
@@ -94,7 +93,7 @@ func handle_packet_server(event: Array):
 		_: pass
 func handle_chat_server(event: Array):
 	var packet_peer: ENetPacketPeer = event[1]
-	var data = event[2]
+	var data: PackedByteArray = event[2]
 	var bytes: PackedByteArray = PackedByteArray()
 	var _client: Client = clients[packet_peer.get_instance_id()]
 	var client_name_size = _client.name.to_utf8_buffer().size()
@@ -107,7 +106,7 @@ func handle_chat_server(event: Array):
 	bytes.append(char_name_size & 0xFF)
 	if char_name_size > 0:
 		bytes.append_array(_client.character.to_utf8_buffer())
-	bytes.append_array(data[1])
+	bytes.append_array(data.slice(1, data.size()))
 	server.broadcast(1, bytes, server.FLAG_RELIABLE)
 func handle_chat_client(event: Array):
 	var data: PackedByteArray = event[2]
