@@ -29,9 +29,9 @@ func _ready():
 		print("Running as server.")
 		is_server = true
 		server = ENetConnection.new()
-		return server.create_host_bound("0.0.0.0", 5515)
-	set_process(false)
+		return server.create_host_bound("0.0.0.0", 5515, 32, 2)
 	client = ENetConnection.new()
+	client.create_host()
 	quit_button = get_node("Panel/Quit")
 	quit_button.pressed.connect(self._on_quit_press)
 	connect_button = get_node("Panel/Connect")
@@ -41,7 +41,7 @@ func _ready():
 func _on_address_entered(text: String):
 	pass
 func _on_connect_press():
-	client.connect_to_host("127.0.0.1", 5515)
+	client.connect_to_host("127.0.0.1", 5515, 2)
 func _on_quit_press():
 	get_tree().quit()
 func handle_connect_server(id):
@@ -51,6 +51,8 @@ func handle_disconnect_server(id):
 func handle_packet_server(event: Array):
 	# We could combine these two functions into one, but that'll lead to a lot of ugly "if is_server" everywhere.
 	# This is easier to read.
+	if event[0] == server.EVENT_NONE:
+		return
 	var packet_peer: ENetPacketPeer = event[1]
 	var id: String = str(packet_peer.get_instance_id())
 	var id_buf = id.to_utf8_buffer()
@@ -122,17 +124,15 @@ func handle_chat_client(event: Array):
 		message = data.slice(4 + client_name_size, data.size())
 	print(client_name, character_name if character_name.to_utf8_buffer().size() > 0 else null, message)
 func handle_connect_client(event: Array):
-	pass
+	$MainMenu.hide()
 func handle_disconnect_client(event: Array):
-	pass
+	$MainMenu.show()
 func handle_packet_client(event: Array):
 	match event[0]:
 		client.EVENT_CONNECT:
 			client_connected = true
-			set_process(true)
 		client.EVENT_DISCONNECT:
 			client_connected = false
-			set_process(false)
 		client.EVENT_RECEIVE:
 			var data = event[2]
 			match data[0]:
@@ -145,17 +145,21 @@ func handle_packet_client(event: Array):
 		_: pass
 var event: Array = []
 func _process(delta):
+	event = []
 	var packet_peer: ENetPacketPeer
-	if is_server and clients.size() > 0:
+	if is_server:
 		event = server.service()
-		while event:
+		print(event)
+		while event[0] != server.EVENT_NONE:
 			packet_peer = event[1]
 			handle_packet_server(event)
 			event = server.service()
-	if client_connected:
+		server.flush()
+		return
+	event = client.service()
+	while event[0] != client.EVENT_NONE:
+		packet_peer = event[1]
+		handle_packet_client(event)
 		event = client.service()
-		while event:
-			packet_peer = event[1]
-			handle_packet_client(event)
-			event = client.service()
-	event = []
+	client.flush()
+	
