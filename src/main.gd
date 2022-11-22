@@ -121,7 +121,7 @@ func handle_chat_client(event: Array):
 		message = data.slice(5 + client_name_size + char_name_size, data.size())
 	else:
 		message = data.slice(4 + client_name_size, data.size())
-	print(client_name, character_name if character_name.to_utf8_buffer().size > 0 else null, message)
+	print(client_name, character_name if character_name.to_utf8_buffer().size() > 0 else null, message)
 func handle_connect_client(event: Array):
 	pass
 func handle_disconnect_client(event: Array):
