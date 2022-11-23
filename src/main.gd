@@ -2,6 +2,7 @@ extends Control
 
 var client: ENetConnection
 var server: ENetConnection
+var peer: ENetPacketPeer
 
 var is_server: bool = false
 
@@ -14,10 +15,15 @@ var name_line: LineEdit
 
 #Enums
 enum {
+	# A chat message is formatted: [CHAT_MESSAGE, UTF_8 buffer] when sent to the server. 
+	# The server will then broadcoast [CHAT_MESSAGE, CLIENT_NAME_SIZE, CLIENT_NAME, CHARACTER_NAME_SIZE (optional, set to 0 if no character), CHARACTER_NAME, UTF_8 BUFFER]
 	CHAT_MESSAGE,
+	# Ultimately, whenever a player is connected, we will send a data array of [TYPE, SIZE, ID, SIZE, CLIENT_NAME, SIZE, CHARACTER_NAME]
+	# Character name is optional; if size is 0, we won't send it.
+	# Client names are not optional. For now, clients will choose a name before joining the server; eventually, proper auth.
 	PLAYER_CONNECT,
-	PLAYER_DISCONNECT,
-	PLAYER_INPUT
+	PLAYER_DISCONNECT, #[TYPE, ID] - We only need the type & ID of a client to disconnect it.
+	PLAYER_INPUT, # [TYPE, ACTION, IS_BUTTON_PRESSED] If this is a release, IS_BUTTON_PRESSED == false.
 }
 
 # Misc
@@ -38,10 +44,16 @@ func _ready():
 	connect_button.pressed.connect(self._on_connect_press)
 	address_line = get_node("Panel/AddressLine")
 	address_line.text_submitted.connect(self._on_address_entered)
+func try_connect(address: String, port: int):
+	peer = client.connect_to_host(address, port, 2)
 func _on_address_entered(text: String):
+	var split_text = text.split(":")
+	var address = split_text[0]
+	var port = split_text[1]
+	try_connect(address, int(port))
+func _on_connect_press(address: String, port: int):
+	#var split_text = text.
 	pass
-func _on_connect_press():
-	client.connect_to_host("127.0.0.1", 5515, 2)
 func _on_quit_press():
 	get_tree().quit()
 func handle_connect_server(id):
@@ -58,9 +70,6 @@ func handle_packet_server(event: Array):
 	var id_buf = id.to_utf8_buffer()
 	match event[0]:
 		server.EVENT_CONNECT:
-			# Ultimately, whenever a player is connected, we will send a data array of [TYPE, SIZE, ID, SIZE, CLIENT_NAME, SIZE, CHARACTER_NAME]
-			# Character name is optional; if size is 0, we won't send it.
-			# Client names are not optional. For now, clients will choose a name before joining the server; eventually, proper auth.
 			clients[id] = Client.new()
 			var _client = clients[id]
 			handle_connect_server(id)
@@ -88,8 +97,7 @@ func handle_packet_server(event: Array):
 		server.EVENT_RECEIVE:
 			var data = event[2]
 			match data[0]: 
-				# A chat message is formatted: [CHAT_MESSAGE, UTF_8 buffer] when sent to the server.
-				# The server will then broadcoast [CHAT_MESSAGE, CLIENT_NAME_SIZE, CLIENT_NAME, CHARACTER_NAME_SIZE (optional, set to 0 if no character), CHARACTER_NAME, UTF_8 BUFFER]
+				
 				CHAT_MESSAGE: handle_chat_server(event)
 				_: pass
 		_: pass
@@ -124,14 +132,25 @@ func handle_chat_client(event: Array):
 		message = data.slice(4 + client_name_size, data.size())
 	print(client_name, character_name if character_name.to_utf8_buffer().size() > 0 else null, message)
 func handle_connect_client(event: Array):
-	$MainMenu.hide()
+	var packet_peer = event[1]
+	var data = event[2]
+	var id: String = str(packet_peer.get_instance_id())
+	var id_buf = id.to_utf8_buffer()
+	var _client: Client = Client.new()
+	clients[id] = _client
+
 func handle_disconnect_client(event: Array):
-	$MainMenu.show()
+	var data: PackedByteArray = event[2]
+	var id = data.slice(1, data.size()).get_string_from_utf8()
+	clients.erase(id)
 func handle_packet_client(event: Array):
+	# [TYPE, SIZE, ID, SIZE, CLIENT_NAME, SIZE, CHARACTER_NAME]
 	match event[0]:
 		client.EVENT_CONNECT:
+			$MainMenu.hide()
 			client_connected = true
 		client.EVENT_DISCONNECT:
+			$MainMenu.show()
 			client_connected = false
 		client.EVENT_RECEIVE:
 			var data = event[2]
@@ -143,6 +162,13 @@ func handle_packet_client(event: Array):
 				PLAYER_DISCONNECT:
 					handle_disconnect_client(event)
 		_: pass
+func send_chat(text: String):
+	var bytes: PackedByteArray = PackedByteArray()
+	bytes.append(CHAT_MESSAGE)
+	bytes.append_array(text.to_utf8_buffer())
+	client.broadcast(1, bytes, client.FLAG_RELIABLE)
+		# A chat message is formatted: [CHAT_MESSAGE, UTF_8 buffer] when sent to the server. 
+	# The server will then broadcoast [CHAT_MESSAGE, CLIENT_NAME_SIZE, CLIENT_NAME, CHARACTER_NAME_SIZE (optional, set to 0 if no character), CHARACTER_NAME, UTF_8 BUFFER]
 var event: Array = []
 func _process(delta):
 	event = []
