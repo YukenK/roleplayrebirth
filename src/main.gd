@@ -51,10 +51,6 @@ func client_to_utf8(_client: Client) -> PackedByteArray:
 	
 # MISC FUNCTIONS
 
-# SERVER FUNCTIONS
-
-# CLIENT FUNCTIONS
-
 func _ready():
 	if "--server" in OS.get_cmdline_args():
 		print("Running as server.")
@@ -69,20 +65,10 @@ func _ready():
 	connect_button.pressed.connect(self._on_connect_press)
 	address_line = get_node("Panel/AddressLine")
 	address_line.text_submitted.connect(self._on_address_entered)
-func try_connect(address: String, port: int):
-	peer = client.connect_to_host(address, port, 2)
-# Handle malformed addresses at a later date.
-func _on_address_entered(text: String):
-	var split_text = text.split(":")
-	var address = split_text[0]
-	var port = split_text[1]
-	try_connect(address, int(port))
-func _on_connect_press():
-	if address_line.text == "":
-		return
-	_on_address_entered(address_line.text)
-func _on_quit_press():
-	get_tree().quit()
+
+
+# SERVER FUNCTIONS
+
 func handle_connect_server(id):
 	pass
 func handle_disconnect_server(id):
@@ -98,12 +84,12 @@ func handle_packet_server(event: Array):
 	if event[0] == server.EVENT_NONE:
 		return
 	var packet_peer: ENetPacketPeer = event[1]
-	var id: String = packet_peer.get_remote_address() + str(packet_peer.get_remote_port())
+	var id: String = str(packet_peer.get_instance_id())
 	var id_buf = id.to_utf8_buffer()
 	match event[0]:
 		server.EVENT_CONNECT:
 			clients[id] = Client.new()
-			var _client = clients[id]
+			var _client = clients.get(id)
 			handle_connect_server(id)
 			var bytes: PackedByteArray = PackedByteArray()
 			bytes.append(PLAYER_CONNECT & 0xFF)
@@ -118,7 +104,7 @@ func handle_packet_server(event: Array):
 				bytes.append_array(char_name)
 			else:
 				bytes.append(0)
-			server.broadcast(1, bytes, server.FLAG_RELIABLE)
+			server.broadcast(1, bytes, ENetPacketPeer.FLAG_UNSEQUENCED)
 			sync_clients_server(packet_peer)
 		server.EVENT_DISCONNECT:
 			handle_disconnect_server(id)
@@ -126,18 +112,18 @@ func handle_packet_server(event: Array):
 			bytes.append(PLAYER_DISCONNECT & 0xFF)
 			bytes.append(id_buf.size() & 0xFF)
 			bytes.append_array(id_buf)
-			server.broadcast(1, bytes, ENetPacketPeer.FLAG_RELIABLE)
+			server.broadcast(1, bytes, ENetPacketPeer.FLAG_UNSEQUENCED)
 		server.EVENT_RECEIVE:
-			print(event)
-#			match data[0]:
-#				CHAT_MESSAGE: handle_chat_server(event)
-#				_: pass
+			var pkt: Array = event[1].get_packet()
+			match pkt[0]:
+				CHAT_MESSAGE: handle_chat_server(event, pkt)
+				_: pass
 		_: pass
-func handle_chat_server(event: Array):
+func handle_chat_server(event: Array, pkt: Array):
 	var packet_peer: ENetPacketPeer = event[1]
-	var data: PackedByteArray = event[2]
 	var bytes: PackedByteArray = PackedByteArray()
-	var _client: Client = clients[packet_peer.get_instance_id()]
+	var _client: Client = clients.get(str(packet_peer.get_instance_id()))
+	print(_client)
 	var client_name_size = _client.name.to_utf8_buffer().size()
 	var char_name_size = 0
 	if _client.character != null:
@@ -148,22 +134,36 @@ func handle_chat_server(event: Array):
 	bytes.append(char_name_size & 0xFF)
 	if char_name_size > 0:
 		bytes.append_array(_client.character.to_utf8_buffer())
-	bytes.append_array(data.slice(1, data.size()))
-	server.broadcast(1, bytes, server.FLAG_RELIABLE)
-func handle_chat_client(event: Array):
-	var data: PackedByteArray = event[2]
-	var client_name_size = data[1]
-	var client_name = data.slice(2, client_name_size).get_string_from_utf8()
-	var char_name_size = data[3 + client_name_size]
+	bytes.append_array(pkt.slice(1, pkt.size()))
+	server.broadcast(1, bytes, ENetPacketPeer.FLAG_UNSEQUENCED)
+# CLIENT FUNCTIONS
+func try_connect(address: String, port: int):
+	peer = client.connect_to_host(address, port, 2)
+# Handle malformed addresses at a later date.
+func _on_address_entered(text: String):
+	var split_text = text.split(":")
+	var address = split_text[0]
+	var port = split_text[1]
+	try_connect(address, int(port))
+func _on_connect_press():
+	if address_line.text == "":
+		return
+	_on_address_entered(address_line.text)
+func _on_quit_press():
+	get_tree().quit()
+func handle_chat_client(event: Array, pkt: PackedByteArray):
+	var client_name_size = pkt[1]
+	var client_name = pkt.slice(2, client_name_size).get_string_from_utf8()
+	var char_name_size = pkt[3 + client_name_size]
 	var character_name = null
 	var message = null
 	if char_name_size > 0:
-		character_name = data.slice(4 + client_name_size, char_name_size).get_string_from_utf8()
-		message = data.slice(5 + client_name_size + char_name_size, data.size())
+		character_name = pkt.slice(4 + client_name_size, char_name_size).get_string_from_utf8()
+		message = pkt.slice(5 + client_name_size + char_name_size, pkt.size())
 	else:
-		message = data.slice(4 + client_name_size, data.size())
+		message = pkt.slice(4 + client_name_size, pkt.size())
 	print(client_name, character_name if character_name.to_utf8_buffer().size() > 0 else null, message)
-func handle_connect_client(event: Array):
+func handle_connect_client(event: Array, pkt: PackedByteArray):
 	var packet_peer = event[1]
 	var data = event[2]
 	var id: String = str(packet_peer.get_instance_id())
@@ -172,7 +172,7 @@ func handle_connect_client(event: Array):
 	clients[id] = _client
 	peer = client.get_peers()[0]
 
-func handle_disconnect_client(event: Array):
+func handle_disconnect_client(event: Array, pkt: PackedByteArray):
 	var data: PackedByteArray = event[2]
 	var id = data.slice(1, data.size()).get_string_from_utf8()
 	clients.erase(id)
@@ -187,23 +187,24 @@ func handle_packet_client(event: Array):
 			self.show()
 			client_connected = false
 		client.EVENT_RECEIVE:
-			var data = event[2]
-			print(data.size())
-			match data[0]:
+			var pkt = event[1].get_packet()
+			match pkt[0]:
 				CHAT_MESSAGE:
-					handle_chat_client(event)
+					handle_chat_client(event, pkt)
 				PLAYER_CONNECT:
-					handle_connect_client(event)
+					handle_connect_client(event, pkt)
 				PLAYER_DISCONNECT:
-					handle_disconnect_client(event)
+					handle_disconnect_client(event, pkt)
 		_: pass
 func send_chat(text: String):
 	var bytes: PackedByteArray = PackedByteArray()
 	bytes.append(CHAT_MESSAGE)
 	bytes.append_array(text.to_utf8_buffer())
-	peer.send(1, PackedByteArray(bytes), ENetPacketPeer.FLAG_RELIABLE)
+	print(bytes.size())
+	peer.send(1, bytes, ENetPacketPeer.FLAG_UNSEQUENCED)
 		# A chat message is formatted: [CHAT_MESSAGE, UTF_8 buffer] when sent to the server. 
 	# The server will then broadcoast [CHAT_MESSAGE, CLIENT_NAME_SIZE, CLIENT_NAME, CHARACTER_NAME_SIZE (optional, set to 0 if no character), CHARACTER_NAME, UTF_8 BUFFER]
+
 var event: Array = []
 func _process(delta):
 	event = []
