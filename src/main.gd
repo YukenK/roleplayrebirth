@@ -29,30 +29,17 @@ enum {
 	PLAYER_DISCONNECT, #[TYPE, ID] - We only need the type & ID of a client to disconnect it.
 	PLAYER_INPUT, # [TYPE, ACTION, IS_BUTTON_PRESSED] If this is a release, IS_BUTTON_PRESSED == false.
 	# This is a _full sync_ of all existing clients on the server.
-	SYNC_CLIENT_FULL, # [TYPE, CLIENT_NAME_SIZE, CLIENT_NAME, optional CHARACTER_NAME_SIZE, optional CHARACTER_NAME, REPEAT]
-	# This syncs one client instead.
+	SYNC_CLIENT_FULL, # [TYPE, CLIENT_ID_SIZE, CLIENT_ID, CLIENT_NAME_SIZE, CLIENT_NAME, optional CHARACTER_NAME_SIZE, optional CHARACTER_NAME, REPEAT]
+	# This syncs one client instead - same format as above, minus REPEAT.
 	SYNC_CLIENT,
 }
 
 # Misc
 var clients: Dictionary = {}
 var client_connected = false
+var mobs: Dictionary = {}
 
 
-# Grab a client's name and character name, pack into a byte array.
-func client_to_utf8(_client: Client) -> PackedByteArray:
-	var data: PackedByteArray = PackedByteArray()
-	var buf = _client.name.to_utf8_buffer()
-	data.append(buf.size())
-	data.append_array(buf)
-	buf = _client.character.to_utf8_buffer()
-	if buf.size():
-		data.append(buf.size())
-		data.append_array(buf)
-	else:
-		data.append(0)
-	return data
-	
 # MISC FUNCTIONS
 
 func _ready():
@@ -80,11 +67,26 @@ func handle_connect_server(id):
 	pass
 func handle_disconnect_server(id):
 	clients.erase(id)
-func sync_clients_server(packet_peer: ENetPacketPeer):
-	pass
-func sync_client_server(packet_peer: ENetPacketPeer):
+	
+func sync_clients_server(packet_peer: ENetPacketPeer): # When a new client connects, we'll run this for them.
+	var bytes: PackedByteArray = PackedByteArray()
+	bytes.append(SYNC_CLIENT_FULL)
+	for i in range(0, server.get_peers().size()):
+		var id = str(server.get_peers()[i].get_instance_id())
+		var serialized_client = clients[id].serialize()
+		bytes.append_array(serialized_client)
+		if (i + 1 == server.get_peers().size()):
+			bytes.append(0)
+		else:
+			bytes.append(1)
+	packet_peer.send(1, bytes, ENetPacketPeer.FLAG_RELIABLE)
+func sync_client_server(event: Array, id: String): # When a new client connects, this is ran for all existing clients including the new connector.
+	var bytes: PackedByteArray = PackedByteArray()
+	bytes.append(SYNC_CLIENT)
+	var serialized_client = clients[id].serialize()
+	bytes.append_array(serialized_client)
 	for _peer in server.get_peers():
-		pass
+		_peer.send(1, serialized_client, ENetPacketPeer.FLAG_RELIABLE)
 func handle_packet_server(event: Array):
 	# We could combine these two functions into one, but that'll lead to a lot of ugly "if is_server" everywhere.
 	# This is easier to read.
@@ -96,30 +98,11 @@ func handle_packet_server(event: Array):
 	match event[0]:
 		server.EVENT_CONNECT:
 			clients[id] = Client.new()
-			var _client = clients.get(id)
-			handle_connect_server(id)
-			var bytes: PackedByteArray = PackedByteArray()
-			bytes.append(PLAYER_CONNECT & 0xFF)
-			bytes.append(id_buf.size() & 0xFF)
-			bytes.append_array(id_buf)
-			var client_name = _client.name.to_utf8_buffer()
-			bytes.append(client_name.size() & 0xFF)
-			bytes.append_array(client_name)
-			if _client.character != null:
-				var char_name = _client.character.to_utf8_buffer()
-				bytes.append(char_name.size())
-				bytes.append_array(char_name)
-			else:
-				bytes.append(0)
-			server.broadcast(1, bytes, ENetPacketPeer.FLAG_UNSEQUENCED)
+			clients[id].id = id
 			sync_clients_server(packet_peer)
+			sync_client_server(event, id)
 		server.EVENT_DISCONNECT:
-			handle_disconnect_server(id)
-			var bytes: PackedByteArray = PackedByteArray()
-			bytes.append(PLAYER_DISCONNECT & 0xFF)
-			bytes.append(id_buf.size() & 0xFF)
-			bytes.append_array(id_buf)
-			server.broadcast(1, bytes, ENetPacketPeer.FLAG_UNSEQUENCED)
+			pass
 		server.EVENT_RECEIVE:
 			var pkt: Array = event[1].get_packet()
 			match pkt[0]:
@@ -174,23 +157,43 @@ func handle_chat_client(event: Array, pkt: PackedByteArray):
 		message = pkt.slice(3 + client_name_size, pkt.size())
 		chat_box.add_text(client_name.get_string_from_utf8() + ": " + message.get_string_from_utf8() + "\n")
 func handle_connect_client(event: Array, pkt: PackedByteArray):
-	return
-	var packet_peer = event[1]
-	var data = event[2]
-	var id: String = str(packet_peer.get_instance_id())
-	var id_buf = id.to_utf8_buffer()
-	var _client: Client = Client.new()
-	clients[id] = _client
-	peer = client.get_peers()[0]
-
+	pass
 func handle_disconnect_client(event: Array, pkt: PackedByteArray):
-	return
-	var data: PackedByteArray = event[2]
-	var id = data.slice(1, data.size()).get_string_from_utf8()
-	clients.erase(id)
-	peer = null
+	pass
+func handle_sync_client(event: Array, pkt: PackedByteArray):
+	var id = str(event[1].get_instance_id())
+	if not clients.has(id):
+		clients[id] = Client.new()
+		clients[id].id = id
+	var client_name_size = pkt[1]
+	var client_name = pkt.slice(2, client_name_size + 2)
+	var character_name_size = pkt[2 + client_name_size]
+	var character_name = null
+	if character_name_size:
+		character_name = pkt.slice(client_name_size + 3, pkt.size())
+func handle_full_sync_client(event: Array, pkt: PackedByteArray):
+	var id = str(event[1].get_instance_id())
+#	[TYPE, CLIENT_NAME_SIZE, CLIENT_NAME, optional CHARACTER_NAME_SIZE, optional CHARACTER_NAME, REPEAT]
+	var offset = 0
+	while true:
+		if not clients.has(id):
+			clients[id] = Client.new()
+			clients[id].id = id
+		var client_name_size = pkt[1 + offset]
+		var client_name = pkt.slice(2 + offset, client_name_size + 2 + offset).get_string_from_utf8()
+		clients[id].name = client_name
+		var character_name_size = pkt[client_name_size + 2 + offset]
+		var character_name = null
+		if character_name_size:
+			character_name = pkt.slice(client_name_size + 3 + offset, character_name_size + client_name_size + offset + 3).get_string_from_utf8()
+			clients[id].character = character_name
+		print(client_name)
+		if not pkt[client_name_size + character_name_size + offset + 3]:
+			return
+		offset += client_name_size + character_name_size + 3
+
+		
 func handle_packet_client(event: Array):
-	# [TYPE, SIZE, ID, SIZE, CLIENT_NAME, SIZE, CHARACTER_NAME]
 	match event[0]:
 		client.EVENT_CONNECT:
 			self.get_node("MenuPanel").hide()
@@ -209,6 +212,10 @@ func handle_packet_client(event: Array):
 					handle_connect_client(event, pkt)
 				PLAYER_DISCONNECT:
 					handle_disconnect_client(event, pkt)
+				SYNC_CLIENT:
+					handle_sync_client(event, pkt)
+				SYNC_CLIENT_FULL:
+					handle_full_sync_client(event, pkt)
 		_: pass
 func send_chat(text: String):
 	var bytes: PackedByteArray = PackedByteArray()
