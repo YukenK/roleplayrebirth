@@ -13,6 +13,10 @@ var options_button: Button
 var address_line: LineEdit
 var name_line: LineEdit
 
+var chat_line: LineEdit
+var chat_box: RichTextLabel
+var game_gui: Control
+
 #Enums
 enum {
 	# A chat message is formatted: [CHAT_MESSAGE, UTF_8 buffer] when sent to the server. 
@@ -59,13 +63,16 @@ func _ready():
 		return server.create_host_bound("0.0.0.0", 5515, 32, 2)
 	client = ENetConnection.new()
 	client.create_host()
-	quit_button = get_node("Panel/Quit")
+	quit_button = get_node("MenuPanel/Quit")
 	quit_button.pressed.connect(self._on_quit_press)
-	connect_button = get_node("Panel/Connect")
+	connect_button = get_node("MenuPanel/Connect")
 	connect_button.pressed.connect(self._on_connect_press)
-	address_line = get_node("Panel/AddressLine")
+	address_line = get_node("MenuPanel/AddressLine")
 	address_line.text_submitted.connect(self._on_address_entered)
-
+	game_gui = get_node("GameGUI")
+	chat_line = get_node("GameGUI/ChatLine")
+	chat_line.text_submitted.connect(self._on_chat_entered)
+	chat_box = get_node("GameGUI/ChatPanel/ChatBox")
 
 # SERVER FUNCTIONS
 
@@ -123,19 +130,18 @@ func handle_chat_server(event: Array, pkt: Array):
 	var packet_peer: ENetPacketPeer = event[1]
 	var bytes: PackedByteArray = PackedByteArray()
 	var _client: Client = clients.get(str(packet_peer.get_instance_id()))
-	print(_client)
 	var client_name_size = _client.name.to_utf8_buffer().size()
 	var char_name_size = 0
-	if _client.character != null:
+	if _client.character != "":
 		char_name_size = _client.character.to_utf8_buffer().size()
 	bytes.append(CHAT_MESSAGE)
-	bytes.append(client_name_size & 0xFF)
+	bytes.append(client_name_size)
 	bytes.append_array(_client.name.to_utf8_buffer())
-	bytes.append(char_name_size & 0xFF)
+	bytes.append(char_name_size)
 	if char_name_size > 0:
 		bytes.append_array(_client.character.to_utf8_buffer())
 	bytes.append_array(pkt.slice(1, pkt.size()))
-	server.broadcast(1, bytes, ENetPacketPeer.FLAG_UNSEQUENCED)
+	server.broadcast(1, bytes, ENetPacketPeer.FLAG_RELIABLE)
 # CLIENT FUNCTIONS
 func try_connect(address: String, port: int):
 	peer = client.connect_to_host(address, port, 2)
@@ -145,6 +151,9 @@ func _on_address_entered(text: String):
 	var address = split_text[0]
 	var port = split_text[1]
 	try_connect(address, int(port))
+func _on_chat_entered(text: String):
+	chat_line.clear()
+	send_chat(text)
 func _on_connect_press():
 	if address_line.text == "":
 		return
@@ -153,17 +162,19 @@ func _on_quit_press():
 	get_tree().quit()
 func handle_chat_client(event: Array, pkt: PackedByteArray):
 	var client_name_size = pkt[1]
-	var client_name = pkt.slice(2, client_name_size).get_string_from_utf8()
-	var char_name_size = pkt[3 + client_name_size]
+	var client_name: PackedByteArray = pkt.slice(1, 2 + client_name_size)
+	var char_name_size = pkt[2 + client_name_size]
 	var character_name = null
 	var message = null
 	if char_name_size > 0:
-		character_name = pkt.slice(4 + client_name_size, char_name_size).get_string_from_utf8()
-		message = pkt.slice(5 + client_name_size + char_name_size, pkt.size())
+		character_name = pkt.slice(3 + client_name_size, char_name_size + 3 + client_name_size)
+		message = pkt.slice(3 + client_name_size + char_name_size, pkt.size())
+		chat_box.add_text(character_name.get_string_from_utf8() + " (" + client_name.get_string_from_utf8() + "): " + message.get_string_from_utf8() + "\n")
 	else:
-		message = pkt.slice(4 + client_name_size, pkt.size())
-	print(client_name, character_name if character_name.to_utf8_buffer().size() > 0 else null, message)
+		message = pkt.slice(3 + client_name_size, pkt.size())
+		chat_box.add_text(client_name.get_string_from_utf8() + ": " + message.get_string_from_utf8() + "\n")
 func handle_connect_client(event: Array, pkt: PackedByteArray):
+	return
 	var packet_peer = event[1]
 	var data = event[2]
 	var id: String = str(packet_peer.get_instance_id())
@@ -173,6 +184,7 @@ func handle_connect_client(event: Array, pkt: PackedByteArray):
 	peer = client.get_peers()[0]
 
 func handle_disconnect_client(event: Array, pkt: PackedByteArray):
+	return
 	var data: PackedByteArray = event[2]
 	var id = data.slice(1, data.size()).get_string_from_utf8()
 	clients.erase(id)
@@ -181,10 +193,12 @@ func handle_packet_client(event: Array):
 	# [TYPE, SIZE, ID, SIZE, CLIENT_NAME, SIZE, CHARACTER_NAME]
 	match event[0]:
 		client.EVENT_CONNECT:
-			self.hide()
+			self.get_node("MenuPanel").hide()
+			self.get_node("GameGUI").show()
 			client_connected = true
 		client.EVENT_DISCONNECT:
-			self.show()
+			self.get_node("MenuPanel").show()
+			self.get_node("GameGUI").hide()
 			client_connected = false
 		client.EVENT_RECEIVE:
 			var pkt = event[1].get_packet()
@@ -200,7 +214,6 @@ func send_chat(text: String):
 	var bytes: PackedByteArray = PackedByteArray()
 	bytes.append(CHAT_MESSAGE)
 	bytes.append_array(text.to_utf8_buffer())
-	print(bytes.size())
 	peer.send(1, bytes, ENetPacketPeer.FLAG_UNSEQUENCED)
 		# A chat message is formatted: [CHAT_MESSAGE, UTF_8 buffer] when sent to the server. 
 	# The server will then broadcoast [CHAT_MESSAGE, CLIENT_NAME_SIZE, CLIENT_NAME, CHARACTER_NAME_SIZE (optional, set to 0 if no character), CHARACTER_NAME, UTF_8 BUFFER]
@@ -222,5 +235,4 @@ func _process(delta):
 		handle_packet_client(event)
 		event = client.service()
 	if client_connected:
-		var n = PackedByteArray()
-		send_chat("TEST")
+		pass

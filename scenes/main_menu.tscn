@@ -7,13 +7,13 @@ layout_mode = 3
 anchors_preset = 0
 script = ExtResource("1_y7t5l")
 
-[node name="Panel" type="Panel" parent="."]
+[node name="MenuPanel" type="Panel" parent="."]
 custom_minimum_size = Vector2(1280, 720)
 layout_mode = 0
 offset_right = 40.0
 offset_bottom = 40.0
 
-[node name="Quit" type="Button" parent="Panel"]
+[node name="Quit" type="Button" parent="MenuPanel"]
 custom_minimum_size = Vector2(128, 32)
 layout_mode = 0
 offset_left = 576.0
@@ -22,7 +22,7 @@ offset_right = 704.0
 offset_bottom = 372.0
 text = "Quit"
 
-[node name="Connect" type="Button" parent="Panel"]
+[node name="Connect" type="Button" parent="MenuPanel"]
 custom_minimum_size = Vector2(128, 24)
 layout_mode = 1
 offset_left = 576.0
@@ -31,7 +31,7 @@ offset_right = 704.0
 offset_bottom = 308.0
 text = "Connect"
 
-[node name="Options" type="Button" parent="Panel"]
+[node name="Options" type="Button" parent="MenuPanel"]
 custom_minimum_size = Vector2(128, 32)
 layout_mode = 1
 offset_left = 576.0
@@ -40,7 +40,7 @@ offset_right = 704.0
 offset_bottom = 336.0
 text = "Options"
 
-[node name="AddressLine" type="LineEdit" parent="Panel"]
+[node name="AddressLine" type="LineEdit" parent="MenuPanel"]
 custom_minimum_size = Vector2(128, 0)
 layout_mode = 0
 offset_left = 576.0
@@ -48,3 +48,27 @@ offset_top = 240.0
 offset_right = 704.0
 offset_bottom = 272.0
 text = "127.0.0.1:5515"
+
+[node name="GameGUI" type="Control" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="ChatLine" type="LineEdit" parent="GameGUI"]
+layout_mode = 0
+offset_top = 670.0
+offset_right = 320.0
+offset_bottom = 702.0
+
+[node name="ChatPanel" type="Panel" parent="GameGUI"]
+layout_mode = 0
+offset_top = 500.0
+offset_right = 320.0
+offset_bottom = 660.0
+
+[node name="ChatBox" type="RichTextLabel" parent="GameGUI/ChatPanel"]
+layout_mode = 0
+offset_right = 320.0
+offset_bottom = 160.0
