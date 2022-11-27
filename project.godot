@@ -9,7 +9,7 @@
 config_version=5
 
 _global_script_classes=[{
-"base": "RefCounted",
+"base": "Network",
 "class": &"Client",
 "language": &"GDScript",
 "path": "res://src/client.gd"
@@ -18,10 +18,22 @@ _global_script_classes=[{
 "class": &"Mob",
 "language": &"GDScript",
 "path": "res://src/mob.gd"
+}, {
+"base": "RefCounted",
+"class": &"Network",
+"language": &"GDScript",
+"path": "res://src/network.gd"
+}, {
+"base": "Network",
+"class": &"Server",
+"language": &"GDScript",
+"path": "res://src/server.gd"
 }]
 _global_script_class_icons={
 "Client": "",
-"Mob": ""
+"Mob": "",
+"Network": "",
+"Server": ""
 }
 
 [application]
