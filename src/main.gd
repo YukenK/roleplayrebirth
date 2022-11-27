@@ -1,9 +1,8 @@
 extends Control
 
-var client: ENetConnection
-var server: ENetConnection
-var peer: ENetPacketPeer
+var host: Network
 
+var client_connected: bool = false
 var is_server: bool = false
 
 # GUI Elements
@@ -19,22 +18,14 @@ var game_gui: Control
 
 
 
-# Misc
-var clients: Dictionary = {}
-var client_connected = false
-var mobs: Dictionary = {}
-
-
-# MISC FUNCTIONS
 
 func _ready():
+	host = Network.new()
+	host.conn = ENetConnection.new()
 	if "--server" in OS.get_cmdline_args():
 		print("Running as server.")
-		is_server = true
-		server = ENetConnection.new()
-		return server.create_host_bound("0.0.0.0", 5515, 32, 2)
-	client = ENetConnection.new()
-	client.create_host()
+		return host.conn.create_host_bound("0.0.0.0", 5515, 32, 2)
+	host.conn.create_host()
 	quit_button = get_node("MenuPanel/Quit")
 	quit_button.pressed.connect(self._on_quit_press)
 	connect_button = get_node("MenuPanel/Connect")
@@ -46,25 +37,13 @@ func _ready():
 	chat_line.text_submitted.connect(self._on_chat_entered)
 	chat_box = get_node("GameGUI/ChatPanel/ChatBox")
 
-
-
-
-
 var event: Array = []
 func _process(delta):
 	event = []
 	var packet_peer: ENetPacketPeer
-	if is_server:
-		event = server.service()
-		while event[0] != server.EVENT_NONE:
+	if is_server or client_connected:
+		event = host.conn.service()
+		while event[0] != ENetConnection.EVENT_NONE:
 			packet_peer = event[1]
-			handle_packet_server(event)
-			event = server.service()
-		return
-	event = client.service()
-	while event[0] != client.EVENT_NONE:
-		packet_peer = event[1]
-		handle_packet_client(event)
-		event = client.service()
-	if client_connected:
-		print(clients.size())
+			host.handle_packet(event, packet_peer.get_packet())
+			event = host.conn.service()

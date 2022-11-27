@@ -16,3 +16,9 @@ enum {
 	# This syncs one client instead - same format as above, minus REPEAT.
 	SYNC_CLIENT,
 }
+
+var clients = []
+var conn: ENetConnection
+
+func handle_packet(event: Array, pkt: PackedByteArray):
+	pass
