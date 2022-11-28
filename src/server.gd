@@ -13,20 +13,20 @@ func sync_client_server(event: Array, id: String): # When a new client connects,
 func handle_packet_server(event: Array):
 	# We could combine these two functions into one, but that'll lead to a lot of ugly "if is_server" everywhere.
 	# This is easier to read.
-	if event[0] == server.EVENT_NONE:
+	if event[0] == ENetConnection.EVENT_NONE:
 		return
 	var packet_peer: ENetPacketPeer = event[1]
 	var id: String = str(packet_peer.get_instance_id())
 	var id_buf = id.to_utf8_buffer()
 	match event[0]:
-		server.EVENT_CONNECT:
+		ENetConnection.EVENT_CONNECT:
 			clients[id] = Client.new()
 			clients[id].id = id
 			sync_clients_server(packet_peer)
 			sync_client_server(event, id)
-		server.EVENT_DISCONNECT:
+		ENetConnection.EVENT_DISCONNECT:
 			pass
-		server.EVENT_RECEIVE:
+		ENetConnection.EVENT_RECEIVE:
 			var pkt: Array = event[1].get_packet()
 			match pkt[0]:
 				CHAT_MESSAGE: handle_chat_server(event, pkt)
@@ -47,4 +47,4 @@ func handle_chat_server(event: Array, pkt: Array):
 	if char_name_size > 0:
 		bytes.append_array(_client.character.to_utf8_buffer())
 	bytes.append_array(pkt.slice(1, pkt.size()))
-	server.broadcast(1, bytes, ENetPacketPeer.FLAG_RELIABLE)
+	conn.broadcast(1, bytes, ENetPacketPeer.FLAG_RELIABLE)

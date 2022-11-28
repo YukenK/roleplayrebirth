@@ -17,7 +17,7 @@ enum {
 	SYNC_CLIENT,
 }
 
-var clients = []
+var clients = {}
 var conn: ENetConnection
 
 func handle_packet(event: Array, pkt: PackedByteArray):
