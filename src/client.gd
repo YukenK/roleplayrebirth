@@ -6,19 +6,46 @@ var character: String = "Test_Name"
 var peer: ENetPacketPeer
 
 var client: ENetConnection
+# GUI Elements
+var main_menu: Control
+var quit_button: Button
+var connect_button: Button
+var options_button: Button
+var address_line: LineEdit
+var name_line: LineEdit
 
+var chat_line: LineEdit
+var chat_box: RichTextLabel
+var game_gui: Control
+
+func init(_main_menu: Control):
+	main_menu = _main_menu
+	quit_button = main_menu.get_node("MenuPanel/Quit")
+	quit_button.pressed.connect(self._on_quit_press)
+	connect_button = main_menu.get_node("MenuPanel/Connect")
+	connect_button.pressed.connect(self._on_connect_press)
+	address_line = main_menu.get_node("MenuPanel/AddressLine")
+	address_line.text_submitted.connect(self._on_address_entered)
+	game_gui = main_menu.get_node("GameGUI")
+	chat_line = main_menu.get_node("GameGUI/ChatLine")
+	chat_line.text_submitted.connect(self._on_chat_entered)
+	chat_box = main_menu.get_node("GameGUI/ChatPanel/ChatBox")
+# [CLIENT_ID_SIZE, CLIENT_NAME_SIZE, CLIENT_CHARACTER_NAME_SIZE, CLIENT_ID, CLIENT_NAME, CLIENT_CHARACTER_NAME]
 func serialize() -> PackedByteArray:
-	var data: PackedByteArray = PackedByteArray()
-	var buf = self.name.to_utf8_buffer()
-	data.append(buf.size())
-	data.append_array(buf)
-	buf = self.character.to_utf8_buffer()
-	if buf.size():
-		data.append(buf.size())
-		data.append_array(buf)
+	var bytes: PackedByteArray = PackedByteArray()
+	var id = self.id.to_utf8_buffer()
+	var name = self.name.to_utf8_buffer()
+	var char_name = self.character.to_utf8_buffer() if self.character != "" else null
+	bytes.append(id.size())
+	bytes.append(name.size())
+	if char_name != null: 
+		bytes.append(char_name.size())
 	else:
-		data.append(0)
-	return data
+		bytes.append(0)
+	bytes.append_array(id)
+	bytes.append_array(name)
+	bytes.append_array(char_name) if char_name else null
+	return bytes
 
 # CLIENT FUNCTIONS
 func try_connect(address: String, port: int):
@@ -56,9 +83,19 @@ func handle_connect_client(event: Array, pkt: PackedByteArray):
 func handle_disconnect_client(event: Array, pkt: PackedByteArray):
 	pass
 func handle_sync_client(event: Array, pkt: PackedByteArray):
-	pass
-func handle_full_sync_client(event: Array, pkt: PackedByteArray):
-	pass
+	var id_size = pkt[1]
+	var name_size = pkt[2]
+	var char_name_size = pkt[3]
+	var id = pkt.slice(4, 4 + id_size)
+	var name = pkt.slice(4 + id_size, 4 + id_size + name_size)
+	var char_name = ""
+	if char_name_size > 0:
+		char_name = pkt.slice(4 + id_size + name_size, pkt.size())
+	var client: Client = Client.new()
+	client.id = id
+	client.name = name
+	client.char_name = char_name
+	clients[id] = client
 func handle_packet_client(event: Array):
 	pass
 func send_chat(text: String):
