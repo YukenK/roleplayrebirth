@@ -1,6 +1,6 @@
 class_name Client extends Network
 
-var id: int
+var id: String
 var name: String = "YukenK"
 var character: String = "Test_Name"
 var peer: ENetPacketPeer

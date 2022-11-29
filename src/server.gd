@@ -6,10 +6,37 @@ func handle_connect_server(id):
 	pass
 func handle_disconnect_server(id):
 	pass
+# These two functions might be able to be combined, but I'm leaving them separate even if there is some code repetition.
 func sync_clients_server(packet_peer: ENetPacketPeer): # When a new client connects, we'll run this for them.
-	pass
-func sync_client_server(event: Array, id: String): # When a new client connects, this is ran for all existing clients including the new connector.
-	pass
+	# [TYPE, CLIENT_ID_SIZE, CLIENT_NAME_SIZE, CLIENT_CHARACTER_NAME_SIZE, CLIENT_ID, CLIENT_NAME, CLIENT_CHARACTER_NAME]
+	var bytes: PackedByteArray = PackedByteArray()
+	bytes.append(SYNC_CLIENT_FULL)
+	for client in self.clients:
+		var id = client.id.to_utf8_buffer()
+		var name = client.name.to_utf8_buffer()
+		var char_name = client.character.to_utf8_buffer()
+		bytes.append(client.id.size())
+		bytes.append(client.name.size())
+		bytes.append(char_name.size())
+		bytes.append_array(id)
+		bytes.append_array(name)
+		if char_name.size() > 0: bytes.append_array(char_name)
+	packet_peer.send(1, bytes, ENetConnection.FLAG_RELIABLE)
+func sync_client_server(event: Array, _id: String): # When a new client connects, this is ran for all existing clients including the new connector.
+	# This will also be used to sync name changes, or when a user creates their character.
+	var client: Client = clients[_id]
+	var bytes: PackedByteArray = PackedByteArray()
+	bytes.append(SYNC_CLIENT)
+	var id = client.id.to_utf8_buffer()
+	var name = client.name.to_utf8_buffer()
+	var char_name = client.character.to_utf8_buffer()
+	bytes.append(id.size())
+	bytes.append(name.size())
+	bytes.append(char_name.size())
+	bytes.append_array(id)
+	bytes.append_array(name)
+	if char_name.size() > 0: bytes.append_array(char_name)
+	
 func handle_packet_server(event: Array):
 	# We could combine these two functions into one, but that'll lead to a lot of ugly "if is_server" everywhere.
 	# This is easier to read.
